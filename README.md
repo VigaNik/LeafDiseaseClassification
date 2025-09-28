@@ -5,4 +5,6 @@ Introduction_to_AI.pdf - Project report.
 
 LeafDiseaseClassification.ipynb - Project notebook.
 
+LeafDiseaseClassification.ipynb - Colab.pdf - PDF of the notebook. Note it hasn't compiled well, and no graphs appear.
+
 main.tex - Latex code for the report (compiled using Overleaf).
