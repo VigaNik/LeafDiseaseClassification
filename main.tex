@@ -1,0 +1,252 @@
+\documentclass{article}
+\usepackage{authblk}
+\usepackage{graphicx}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{amsmath}
+\usepackage{subcaption}
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage{siunitx}
+\usepackage{enumitem}
+
+\title{Leaf Disease Classification & Exploration of Contemporary Models}
+\author[ ]{Rotem Adar 323874511, Rotemcomp@gmail.com}
+\author[ ]{Nikita Nedostoup 336495593 , nikolos7771@gmail.com\\
+Moussaffi John Meir 322923244, johnhmm2001@gmail.com}
+\affil[ ]{Bar-Ilan University, Department of Mathematics}
+\date{}
+\geometry{left=20mm, right=20mm, top=20mm, bottom=20mm}
+\setcounter{Maxaffil}{0}
+\renewcommand\Affilfont{\itshape\small}
+
+\begin{document}
+\maketitle
+
+\section{Introduction}
+The goal of this project is multi-class classification on a leaf disease dataset, where each RGB image is hierarchically labeled by split (train, test, val), leaf type, and disease. \href{https://github.com/JohnLemonAid/LeafDiseaseClassification}{https://github.com/JohnLemonAid/LeafDiseaseClassification}
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=\linewidth]{imgs/examples.png}
+    \caption{Examples of plants with their disease}
+    \label{fig:placeholder}
+\end{figure}
+
+Our goal here was to test the performance of a fine-tuned resnet18 model, which is a relatively simple model, with 11.7 million parameters, in comparison to resnet50 (25.6m), or DeiT-small (21.7m). We then compare ResNet18's performance to that of 4 other, more complex CNN models (ResNet-50, EfficientNet-B2, ConvNeXt-Tiny, DeiT-Small, along with Random Forest, just to see how the classical algorithm we've learned about performs in 'the big 2025'. 
+The evaluation metrics we used were accuracy, F1, and ROC-AUC, along with runtime and parameter size.
+
+\section{Dataset \& Data Analysis}
+\subsection{Dataset and Distributions}
+\textbf{Data source:} The \href{https://www.kaggle.com/datasets/asheniranga/leaf-disease-dataset-combination}{leaf disease dataset} (PlantVillage-style), RGB leaf images organized by hierarchical folders seemed to have been an amalgamation of 3 merged datasets, giving rise to the problem of duplicates, which may cause leakage.
+The following graphs show the 'plant vs disease' heatmap, along with distributions of 'Plants vs Diseases' in the data, scaled by $log(1+n)$, where n in the number of plants with the specific disease.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.3\linewidth]{imgs/dvd.png}
+    \includegraphics[width=0.3\linewidth]{imgs/pvp.png}
+    \includegraphics[width=0.36\linewidth]{imgs/pvd.png}
+    \caption{Full graphs in Addendum}
+\end{figure}
+
+We can see that the heatmap matrices are relatively sparse.\\
+
+\subsection{Preprocessing, Re-splitting and Normalization}
+The dataset included a total of 53,303 images, categorized by the plant (leaf type), and its state (type of disease or healthy). We removed the folders of the 'orange' and 'squash' plant, since they didn't have any 'healthy' pictures. We also scanned the dataset using ImageHash, and removed a total of 12,135 pictures (first copy was saved).
+
+After the cleaning, a disproportionate amount was left in the train folder, so we reassembled the train, val, and test folders in the standard ratio of train 80\%, test 10\%, and val 10\%. Also, we made Individual Standardization Normalization. This type of normalization normalized each photo by individual characteristics. It helps standardize each photo to the same spectral characteristics. That will help clearly see specific patterns on the photo and recognize them after.
+
+ 
+\section{Training}
+\subsection{Models}
+\textbf{ResNet-18 (baseline).} We chose ResNet-18 as a pragmatic baseline: small (11.7M params), fast on a T4, and reliably strong when fine-tuned from ImageNet. It also serves as a common baseline in public Kaggle notebooks on plant disease, so results are easy to compare.
+
+\noindent\textbf{Other models.} ResNet-50 (deeper residual CNN), EfficientNet-B2 (accuracy/efficiency trade-off), ConvNeXt-Tiny (modern ConvNet), DeiT-Small (ViT), and a Random Forest on frozen CNN features.
+
+\subsection{Loss and metrics}
+We trained with multiclass cross-entropy, with class weights to reduce imbalance:
+\[
+L_{\text{CE}} = -\frac{1}{N}\sum_{i=1}^{N}\log p_\theta(y_i\mid x_i), \quad
+p_\theta = \text{softmax}(f_\theta(x)).
+\]
+We also tested a Houdini-style loss — this function simultaneously uses stochastic probabilities and standard distance metrics or gradients:
+\[
+L_{\text{Houdini}}(x,y) \;=\; \mathbb{P}\big(s_y(x)-\max_{k\neq y}s_k(x) > \tau\big)\cdot \ell(x,y),
+\] 
+It helps to evaluate better both distance factors and predictions, and gives better weights also in difficult cases and even in black boxes. This function was created in Israel. (In this case, l(x,y) = 1 ) 
+
+Metrics: top-1 accuracy, macro-F1 (unweighted mean over classes), and validation loss (ROC-AUC for summaries). The best checkpoint is selected by validation accuracy (ties by lower loss).
+
+
+\paragraph{Metric definitions}
+Precision $=\tfrac{TP}{TP+FP}$ (accuracy of positive predictions);
+Recall $=\tfrac{TP}{TP+FN}$ (sensitivity); 
+$F1=\tfrac{2\cdot \mathrm{Precision}\cdot \mathrm{Recall}}{\mathrm{Precision}+\mathrm{Recall}}$.
+$F1_{\text{macro}}$ is the unweighted mean of classwise F1; $F1_{\text{weighted}}$ averages F1 with class-frequency weights.
+We select the best checkpoint by validation accuracy (ties by lower loss) and report accuracy, macro-F1, and validation loss (ROC–AUC is optional).
+
+\subsection{Loss Competition}
+We ran two loss setups on a 20\% subset for 4 epochs: (A) a Houdini-style margin loss and (B) cross-entropy with class weights. Cross-entropy measures the fit between the true distribution $p$ and the model prediction $q$:
+
+Plant recognition
+(This happened because plant classification in our dataset is an easier task.)
+The model shows very high accuracy on both training and validation with both loss functions. That is a good sign that we don’t have overfitting (we also verified that there is no data leakage). The loss is very low, which means the model detects patterns well.
+
+The F1 score is close to 1, which shows we have a very good balance between precision and recall. This means the model works well with both rare and common classes. In the case of CrossEntropyLoss + ClassWeights, our ClassWeights were sufficient to fix the imbalance 
+that we observed in Random Forest and Logistic Regression.
+
+Disease recognition
+All results are lower and worse, but still not bad with both models. Houdini achieved a better loss, but CE+W gave a better F1 score.
+
+
+
+\subsection{Technology:}
+Google Colab; NVIDIA T4 GPU (16 GB VRAM, ~15 GB usable) with high-RAM host (~51 GB). Python 3.12; PyTorch 2.x, torchvision, scikit-learn; TensorFlow only for tf.data EDA; CUDA 12.x + cuDNN. Training: 224×224 inputs, batch 32, AdamW with cosine decay, up to 15 epochs with early stopping, class-weighted cross-entropy, fp32/AMP. Reproducibility: fixed class indices, saved best validation checkpoint, set random seed, logged package versions.
+
+\subsection{Augmentations and regularization}
+Inputs were resized/cropped to $224\times224$ and normalized to ImageNet statistics. We used mild augmentations (random resized crop, flips, $\pm 15^\circ$ rotation, light color jitter). To limit overfitting we applied early stopping, AdamW with weight decay and a cosine schedule, dropout in the head, DropPath (stochastic depth), and gradient clipping.
+
+\subsection{Training protocol}
+\begin{itemize}[nosep,leftmargin=*]
+  \item \textbf{Full-data baseline:} fine-tune ResNet-18 for up to 15 epochs; pick best checkpoint by \texttt{val} accuracy; report once on \texttt{test}.
+  \item \textbf{Short-budget sweep:} 20\% stratified subset; identical pipeline; 5--7 epochs per model for quick comparison.
+\end{itemize}
+
+\subsection{Optimization and regularization}
+We used learning-rate warm restarts to stabilize early epochs and help escape poor minima, increased epochs/patience, applied gradient clipping to prevent rare gradient spikes, and used DropPath (stochastic depth) to reduce reliance on specific paths. Mild augmentations (resize/crop to $224\times224$, flips, $\pm15^\circ$ rotation, light color jitter) and AdamW with weight decay were applied throughout.
+
+\begin{figure}[H]
+  \centering
+  \begin{subfigure}{0.48\linewidth}
+    \includegraphics[width=\linewidth]{imgs/train times vs epoch.png}
+    \caption{Epoch wall-clock time.}
+  \end{subfigure}\hfill
+  \begin{subfigure}{0.48\linewidth}
+    \includegraphics[width=\linewidth]{imgs/train img per sec.png}
+    \caption{Training throughput (images/s).}
+  \end{subfigure}
+  \caption{Runtime characteristics on T4.}
+\end{figure}
+
+\section{Model Competition}
+\subsection{Plant recognition}
+Plant classification is easy in this dataset: we observed very high accuracy on train/val and low loss with both losses, with no signs of leakage (checked post-cleaning). Macro-F1 is close to 1, indicating a good precision–recall balance across both rare and common classes. With cross-entropy + class weights, imbalance effects seen with Random Forest and Logistic Regression were mitigated.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\linewidth]{imgs/plants models.png}
+    \caption{Caption}
+    \label{fig:placeholder}
+\end{figure}
+
+\subsection{Disease recognition}
+Performance is lower than plants but still solid across models. Houdini achieved lower loss (better separation), while cross-entropy + class weights achieved higher macro-F1 (e.g., $0.867$ vs.\ $0.844$), which we prioritize for practical usefulness.
+
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\linewidth]{imgs/disease models.png}
+    \caption{Caption}
+    \label{fig:placeholder}
+\end{figure}
+
+\section{Best model}
+\subsection{Selection and tuning}
+After the model competition, we chose DeiT-Small as the best model: it delivered the strongest accuracy with the most confident indicators. We also decided to combine two losses, since Houdini produced a lower validation loss (better separation), while cross-entropy with class weights achieved a higher macro-F1 (e.g., $0.867$ vs.\ $0.844$), which is more useful in practice. Concretely, we used a linear combination
+\[
+L_{\text{final}} \;=\; (1-\lambda)\,L_{\text{CE}} \;+\; \lambda\,L_{\text{Houdini}},
+\]
+with $\lambda$ selected on the validation set. 
+
+Tuning steps:
+\begin{itemize}[nosep,leftmargin=*]
+  \item Learning-rate warm restarts to stabilize early epochs and escape poor minima.
+  \item Increased epochs and patience to allow more improvement.
+  \item Gradient clipping to prevent rare gradient spikes.
+  \item DropPath (stochastic depth) to reduce reliance on any single path and curb overfitting.
+\end{itemize}
+
+\subsection{Testing}
+We trained on \texttt{train}, selected the checkpoint with the best validation accuracy (ties by lower loss), and evaluated once on the held-out \texttt{test} split. We report top-1 accuracy, macro-F1 (unweighted mean over classes), and loss; ROC–AUC is shown for summaries. Figures with learning dynamics and confusion/ROC (if available) are included in the Results section.
+
+
+\section{Results and conclusions}
+\begin{itemize}[nosep,leftmargin=*]
+  \item Plant recognition is easy in this dataset (very high accuracy/F1, low loss); disease recognition is lower but solid.
+  \item Loss comparison: Houdini achieves lower loss; cross-entropy + class weights achieves higher macro-F1 (e.g., $0.867$ vs.\ $0.844$). We prioritize macro-F1 for practical usefulness.
+  \item Model choice: DeiT-Small provided the strongest overall accuracy in our sweep; ResNet-18 remains a fast, compact baseline with competitive results.
+  \item Runtime: on a T4, DeiT-Small is feasible; throughput and epoch times are reported in the runtime figures.
+\end{itemize}
+
+\begin{figure}[H]
+  \centering
+  \begin{subfigure}{0.48\linewidth}
+    \includegraphics[width=\linewidth]{imgs/acc.png}
+    \caption{Train accuracy (plant / disease).}
+  \end{subfigure}\hfill
+  \begin{subfigure}{0.48\linewidth}
+    \includegraphics[width=\linewidth]{imgs/f1.png}
+    \caption{Macro-F1 on val / test.}
+  \end{subfigure}
+
+  \vspace{0.5em}
+  \begin{subfigure}{0.48\linewidth}
+    \includegraphics[width=\linewidth]{imgs/loss v epoch.png}
+    \caption{Validation / test loss.}
+  \end{subfigure}\hfill
+  \begin{subfigure}{0.48\linewidth}
+    \includegraphics[width=\linewidth]{imgs/loss comps.png}
+    \caption{Train loss components (Houdini vs CE).}
+  \end{subfigure}
+  \caption{Learning dynamics for ResNet-18.}
+\end{figure}
+
+We can see in graph (a) that both plant accuracy and disease accuracy improve, and the accuracy is high enough (disease acc $\geq 0.92$ and plant acc close to 1) after 16 epochs. The classification model seems efficient in predicting the image classes.\
+Graph (b) shows that both validation and test F1 scores converge, which means the model is in a healthy state, and there is no detectable risk of overfitting.\
+In graph (c), we see the combined loss looks nearly identical for val and test—that’s another sign of a stable model. But the loss is still pretty high; this could reflect class imbalance in the dataset, which inflates the importance of some classes over others (and helps explain why F1-macro(disease) is lower than F1-macro(plant)).
+
+
+\begin{figure}[H]
+  \centering
+  \begin{subfigure}{0.48\linewidth}
+    \includegraphics[width=\linewidth]{imgs/feature clusters plants.png}
+    \caption{t-SNE of features (plant labels).}
+  \end{subfigure}\hfill
+  \begin{subfigure}{0.48\linewidth}
+    \includegraphics[width=\linewidth]{imgs/feature clusters diseases.png}
+    \caption{t-SNE of features (disease labels).}
+  \end{subfigure}
+  \caption{Feature separability in the embedding space.}
+\end{figure}
+
+
+
+\textbf{Plants vs.\ diseases.} Plant recognition is easier (very high accuracy/F1, low loss); disease recognition is lower but solid. \textbf{Loss comparison:} Houdini achieved lower loss (better separation), while cross-entropy with class weights achieved higher macro-F1 (e.g., $0.867$ vs.\ $0.844$), which we prioritize. \textbf{Model comparison:} DeiT-Small reached the strongest accuracy in our sweep; ResNet-18 remains a fast, compact baseline with competitive results.
+
+
+
+\subsection{Metric rationale}
+We report top-1 accuracy for overall correctness, macro-F1 to balance rare and common classes, and validation loss for optimization diagnostics; best checkpoints are selected by validation accuracy (ties by lower loss).
+
+\paragraph{Model choice.}
+In the short-budget sweep, DeiT-Small produced the strongest disease-results overall; ResNet-18 remains a compact, fast baseline with competitive performance.
+
+\nocite{*}
+\bibliographystyle{IEEEtran}
+\bibliography{bibtex.bib}
+
+
+\section{Addendum}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.6\linewidth]{imgs/d vs d.png}
+    \includegraphics[width=0.6\linewidth]{imgs/p vs p.png}
+    \caption{Caption}
+    \label{fig:placeholder}
+\end{figure}
+\begin{figure}[h!]
+    \centering
+    \caption{Caption}
+    \label{fig:placeholder}
+\end{figure}
+\includegraphics[width=0.9\linewidth]{imgs/p vs d.png}
+
+\end{document}
